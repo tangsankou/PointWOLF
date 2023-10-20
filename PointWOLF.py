@@ -7,9 +7,15 @@
 import torch
 import torch.nn as nn
 import numpy as np
+###add
+from saliency import density_saliency
+import argparse
 
 class PointWOLF(object):
-    def __init__(self, args):
+    ###change
+    # def __init__(self, args):#the origin
+    def __init__(self, args, saliency): #add a new parameter saliency
+    ###end
         self.num_anchor = args.w_num_anchor
         self.sample_type = args.w_sample_type
         self.sigma = args.w_sigma
@@ -17,6 +23,9 @@ class PointWOLF(object):
         self.R_range = (-abs(args.w_R_range), abs(args.w_R_range))
         self.S_range = (1., args.w_S_range)
         self.T_range = (-abs(args.w_T_range), abs(args.w_T_range))
+
+        ###add
+        self.saliency = saliency
         
         
     def __call__(self, pos):
@@ -50,7 +59,8 @@ class PointWOLF(object):
         #Move to origin space
         pos_transformed = pos_transformed + pos_anchor.reshape(M,-1,3) #(M,N,3)
         
-        pos_new = self.kernel_regression(pos, pos_anchor, pos_transformed)
+        pos_new = self.kernel_regression(pos, pos_anchor, pos_transformed)#权重变换
+        
         pos_new = self.normalize(pos_new)
         
         return pos.astype('float32'), pos_new.astype('float32')
@@ -79,8 +89,22 @@ class PointWOLF(object):
         sub = sub @ projection # (M,N,3)
         sub = np.sqrt(((sub) ** 2).sum(2)) #(M,N)  
         
+    ###changed: 高斯核密度作为saliency
         #Kernel regression
-        weight = np.exp(-0.5 * (sub ** 2) / (self.sigma ** 2))  #(M,N) 
+        weight = np.exp(-0.5 * (sub ** 2) / (self.sigma ** 2))  #(M,N) #kernel权重，origin权重(4,1024)
+        ###1、add
+        # saliency_scores = density_saliency(pos, k=20, sigma=0.1)#显着点，新添加的#(n)
+        # saliency = np.expand_dims(saliency_scores, axis=1).repeat(M, axis=-1).transpose(1,0)#(M,N)
+        # # print("weight[0][10]:",weight[0][10])
+        # # print("saliency[0][10]:",saliency[0][10])
+        # weight = 0.5*weight + 0.5*saliency
+        ###end
+        ###2、add
+        weight = weight + self.saliency
+        ###end
+
+    ###end
+
         pos_new = (np.expand_dims(weight,2).repeat(3, axis=-1) * pos_transformed).sum(0) #(N,3)
         pos_new = (pos_new / weight.sum(0, keepdims=True).T) # normalize by weight
         return pos_new
@@ -169,3 +193,20 @@ class PointWOLF(object):
         scale = (1 / np.sqrt((pos ** 2).sum(1)).max()) * 0.999999
         pos = scale * pos
         return pos
+
+if __name__ == "__main__":
+    # 示例用法
+    parser = argparse.ArgumentParser(description='Point Cloud Recognition')
+    parser.add_argument('--w_num_anchor', type=int, default=4, help='Num of anchor point' ) 
+    parser.add_argument('--w_sample_type', type=str, default='fps', help='Sampling method for anchor point, option : (fps, random)') 
+    parser.add_argument('--w_sigma', type=float, default=0.5, help='Kernel bandwidth')  
+
+    parser.add_argument('--w_R_range', type=float, default=10, help='Maximum rotation range of local transformation')
+    parser.add_argument('--w_S_range', type=float, default=3, help='Maximum scailing range of local transformation')
+    parser.add_argument('--w_T_range', type=float, default=0.25, help='Maximum translation range of local transformation')
+    args = parser.parse_args()
+    points = np.random.rand( 1024, 3)  #(n,3)
+    PointWOLF = PointWOLF(args)
+    origin, pointcloud = PointWOLF(points)
+    print("origin:",origin.shape)
+    print("pointcloud:",pointcloud.shape)

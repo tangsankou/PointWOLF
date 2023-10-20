@@ -46,6 +46,7 @@ def load_data(partition):
         all_data.append(data)
         all_label.append(label)
     all_data = np.concatenate(all_data, axis=0)
+    # print("all_data",all_data.shape)#(9840, 2048,3)(2468,2048,3)
     all_label = np.concatenate(all_label, axis=0)
     return all_data, all_label
 
@@ -65,11 +66,18 @@ def jitter_pointcloud(pointcloud, sigma=0.01, clip=0.02):
 
 
 class ModelNet40(Dataset):
-    def __init__(self, args, partition='train'):
+    ###change
+    def __init__(self, args, partition='train'): #the origin,test
+    # def __init__(self, args, saliency, partition='train'): #add a new parameter saliency,train
+    ###end
         self.data, self.label = load_data(partition)
         self.num_points = args.num_points
         self.partition = partition
+        ###add
+        # self.saliency = saliency #train
+        ###end
         self.PointWOLF = PointWOLF(args) if args.PointWOLF else None
+        
         self.AugTune = args.AugTune
 
     def __getitem__(self, item):
@@ -79,7 +87,10 @@ class ModelNet40(Dataset):
             np.random.shuffle(pointcloud)
             
             if self.PointWOLF is not None:
-                origin, pointcloud = self.PointWOLF(pointcloud)
+                ###change
+                # origin, pointcloud = self.PointWOLF(pointcloud) #the origin
+                origin, pointcloud = self.PointWOLF(pointcloud, self.saliency) #add a new parameter saliency
+                ###end
                 if self.AugTune:
                     #When AugTune used, we conduct CDA after AugTune.      
                     return origin, pointcloud, label

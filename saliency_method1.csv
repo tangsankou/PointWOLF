@@ -1,0 +1,13 @@
+Folder Name,Test Acc,Test Avg Acc
+PA_pointnet_gsaliency_eval,0.900729,0.860291
+PA_pointnet_0.5_eval,0.900729,0.860291
+P_pointnet_eval,0.907618,0.864872
+Pdgcnneval,0.927472,0.904244
+PA_pointnet_eval,0.906807,0.869535
+PAeval,0.929092,0.898535
+P_dgcnn_gsaliency_eval,0.929092,0.900203
+P_dgcnn_0.5_eval,0.928687,0.899157
+PA_dgcnn_gaussiansaliency_eval,0.926661,0.898831
+P_pointnet_saliency_eval,0.90316,0.863541
+P_pointnet_0.5_eval,0.90316,0.863541
+PA_dgcnn_0.5_eval,0.925446,0.899703
