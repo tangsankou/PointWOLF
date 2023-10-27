@@ -100,6 +100,39 @@ class ModelNet40(Dataset):
 
     def __len__(self):
         return self.data.shape[0]
+    
+###modelnet40c
+def normalize_pointcloud(pointcloud):
+    pointcloud -= pointcloud.mean(0)
+    d = ((pointcloud**2).sum(-1)**(1./2)).max()
+    pointcloud /= d
+    return pointcloud
+def load_datac(data_root, label_root):
+    point_set = np.load(data_root, allow_pickle=True)
+    label = np.load(label_root, allow_pickle=True)
+    return point_set, label
+
+class ModelNetDataLoaderC(Dataset):
+    def __init__(self, data_root, label_root, num_points, use_normals=False, partition='test'):
+        assert partition in ['train', 'test']
+        self.data, self.label = load_datac(data_root, label_root)
+        self.num_points = num_points
+        self.partition = partition
+        self.use_normals = use_normals
+
+    def __getitem__(self, item):
+        """Returns: point cloud as [N, 3] and its label as a scalar."""
+        pc = self.data[item][:, :3]
+        # print("pcc:",pc.shape)
+        label = self.label[item]
+        # print("labell:",label[0].shape)
+        if self.use_normals:
+            # pc = normalize_points_np(pc)
+            pc[:, 0:3] = normalize_pointcloud(pc[:, 0:3])
+        return pc, label[0]
+
+    def __len__(self):
+        return self.data.shape[0]
 
 
 if __name__ == '__main__':

@@ -16,7 +16,7 @@ import argparse
 import torch
 
 from util import IOStream
-from train import train_vanilla, train_AugTune, test
+from train import train_vanilla, train_AugTune, test, test_c
 
 def _init_():
     if not os.path.exists('checkpoints'):
@@ -31,6 +31,26 @@ def _init_():
     os.system('cp data.py checkpoints' + '/' + args.exp_name + '/' + 'data.py.backup')
     os.system('cp PointWOLF.py checkpoints' + '/' + args.exp_name + '/' + 'PointWOLF.py.backup')
     os.system('cp train.py checkpoints' + '/' + args.exp_name + '/' + 'train.py.backup')
+
+###add for test modelnet40c
+MAP = ['uniform',
+        'gaussian',
+       'background',
+       'impulse',
+    #    'scale',
+       'upsampling',
+       'shear',
+       'rotation',
+       'cutout',
+       'density',
+       'density_inc',
+       'distortion',
+       'distortion_rbf',
+       'distortion_rbf_inv',
+       'occlusion',
+       'lidar',
+       'original'
+]
 
 
 
@@ -60,8 +80,13 @@ if __name__ == "__main__":
                         help='enables CUDA training')
     parser.add_argument('--seed', type=int, default=1, metavar='S',
                         help='random seed (default: 1)')
-    parser.add_argument('--eval', type=bool,  default=False,
-                        help='evaluate the model')
+    # parser.add_argument('--eval', type=bool,  default=False,
+    #                     help='evaluate the model')
+    ###changed
+    parser.add_argument('--eval', type=str,  default='train', metavar='N',
+                        choices=['train','test','testc'],
+                        help='train or test or testc')
+    ###end
     parser.add_argument('--num_points', type=int, default=1024,
                         help='num of points to use')
     parser.add_argument('--dropout', type=float, default=0.5,
@@ -86,13 +111,21 @@ if __name__ == "__main__":
     
     # AugTune settings
     parser.add_argument('--AugTune', action='store_true', help='Use AugTune')
-    parser.add_argument('--l', type=float, default=0.1, help='Difficulty parameter lambda')  
+    parser.add_argument('--l', type=float, default=0.1, help='Difficulty parameter lambda')
+
+    ###add for test or testc
+    parser.add_argument('--log', type=str, default='train', metavar='N', help='Name of log_dir')
     
     args = parser.parse_args()
 
     _init_()
 
-    io = IOStream('checkpoints/' + args.exp_name + '/run.log')
+    ###the origin
+    # io = IOStream('checkpoints/' + args.exp_name + '/run.log')
+    ###change for test or testc
+    io = IOStream('checkpoints/' + args.exp_name + '/' +args.log + '.log')
+    ###end
+
     io.cprint(str(args))
 
     args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -105,10 +138,46 @@ if __name__ == "__main__":
     else:
         io.cprint('Using CPU')
 
-    if not args.eval:
+    ###the origin code
+    """ if not args.eval:
         if args.AugTune:
             train_AugTune(args, io)
         else:
             train_vanilla(args, io)
     else:
-        test(args, io)
+        test(args, io) """
+    ###end
+    ###change for test modelnet40c
+    if args.eval=='train':
+        if args.AugTune:
+            train_AugTune(args, io)
+        else:
+            train_vanilla(args, io)
+    elif args.eval=='test':
+        model_path = 'checkpoints/' + args.exp_name + '/models/model.t7'
+        test(args, io, model_path)
+    elif args.eval=='testc':
+    # data_path = "/home/user_tp/workspace/data/ModelNet40-C/data_uniform_1.npy"
+        label_path = "/home/user_tp/workspace/data/ModelNet40-C/label.npy"
+        model_path = 'checkpoints/' + args.exp_name + '/models/model.t7'
+        ###
+        for cor in MAP:
+            if cor in ['original']:
+                data_path = "/home/user_tp/workspace/data/ModelNet40-C/data_" + cor + ".npy"
+                with torch.no_grad():
+                    instance_acc, class_acc = test_c(args, io, model_path, data_path, label_path)
+                # instance_acc, class_acc, weights = test(classifier.eval(), testDataLoader, vote_num=args.num_votes, num_class=num_class)
+                    outstr = 'data_%s: ,Test Instance Accuracy: %f, Class Accuracy: %f' % (cor, instance_acc, class_acc)
+                    io.cprint(outstr)
+            #     continue
+            else:
+                for sev in [1,2,3,4,5]:
+                    data_path = "/home/user_tp/workspace/data/ModelNet40-C/data_" + cor + "_" + str(sev) + ".npy"
+            
+                    with torch.no_grad():
+                        instance_acc, class_acc = test_c(args, io, model_path, data_path, label_path)
+                    # instance_acc, class_acc, weights = test(classifier.eval(), testDataLoader, vote_num=args.num_votes, num_class=num_class)
+                        outstr = 'data_%s_%s: Test Instance Accuracy: %f, Class Accuracy: %f' % (cor, str(sev), instance_acc, class_acc)
+                        io.cprint(outstr)
+                        # log_string('data_%s_%s: Test Instance Accuracy: %f, Class Accuracy: %f' % (cor, str(sev), instance_acc, class_acc))
+            ###

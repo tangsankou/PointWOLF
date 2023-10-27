@@ -18,9 +18,10 @@ from torch.utils.data import DataLoader
 import sklearn.metrics as metrics
 import torch.nn.functional as F
 
-from data import ModelNet40
+from data import ModelNet40, ModelNetDataLoaderC
 from model import PointNet, DGCNN
 from util import cal_loss
+from tqdm import tqdm
 
 def train_vanilla(args, io):
     train_loader = DataLoader(ModelNet40(args, partition='train'), num_workers=8,
@@ -240,7 +241,7 @@ def train_AugTune(args, io):
             torch.save(model.state_dict(), 'checkpoints/%s/models/model.t7' % args.exp_name)
 
             
-def test(args, io):
+def test(args, io, model_path):
     test_loader = DataLoader(ModelNet40(args, partition='test'),
                              batch_size=args.test_batch_size, shuffle=True, drop_last=False)
 
@@ -255,7 +256,7 @@ def test(args, io):
         model = DGCNN(args).to(device)
 
     model = nn.DataParallel(model)
-    model.load_state_dict(torch.load(args.model_path))
+    model.load_state_dict(torch.load(model_path))
     model = model.eval()
     test_acc = 0.0
     count = 0.0
@@ -275,6 +276,71 @@ def test(args, io):
     avg_per_class_acc = metrics.balanced_accuracy_score(test_true, test_pred)
     outstr = 'Test :: test acc: %.6f, test avg acc: %.6f'%(test_acc, avg_per_class_acc)
     io.cprint(outstr)
+
+
+###add for test modelnet40c
+def test_c(args, io, model_path, data_path,label_path):
+    #model, loader, num_class=40, 
+    vote_num=1
+    num_class = 40
+
+    test_loader = DataLoader(ModelNetDataLoaderC(data_root=data_path, label_root=label_path, partition='test', num_points=args.num_points),
+                                batch_size=args.test_batch_size, shuffle=True, drop_last=False)
+    mean_correct = []
+    class_acc = np.zeros((num_class, 3))
+    print("len(loader):",len(test_loader))
+
+    device = torch.device("cuda" if args.cuda else "cpu")
+
+    #Try to load models
+    if args.model == 'pointnet':
+        model = PointNet(args, num_class).to(device)
+    elif args.model == 'dgcnn':
+        model = DGCNN(args, num_class).to(device)
+    else:
+        raise Exception("Not implemented")
+    print(str(model))
+    
+    model = nn.DataParallel(model)
+    model.load_state_dict(torch.load(model_path))
+    model = model.eval()
+
+    for j, (data, label) in tqdm(enumerate(test_loader), total=len(test_loader)):
+
+        """ points = provider.random_point_dropout(points)
+        points[:, :, 0:3] = provider.random_scale_point_cloud(points[:, :, 0:3])
+        points[:, :, 0:3] = provider.shift_point_cloud(points[:, :, 0:3]) """
+        # points = torch.Tensor(points)
+        data, label = data.to(device), label.to(device).squeeze()
+
+        data = data.transpose(2, 1)
+        vote_pool = torch.zeros(label.size()[0], num_class).cuda()
+
+        # print("target::::::",target.shape)#24
+
+        for _ in range(vote_num):
+            logits = model(data)
+            
+            # pred, _ = model(points)
+            # pred, _, weights = classifier(points)
+            vote_pool += logits
+        
+        # pred = logits.max(dim=1)[1]
+        pred = vote_pool / vote_num
+        pred_choice = pred.data.max(1)[1]
+        for cat in np.unique(label.cpu()):
+            classacc = pred_choice[label == cat].eq(label[label == cat].long().data).cpu().sum()
+            class_acc[cat, 0] += classacc.item() / float(data[label == cat].size()[0])
+            class_acc[cat, 1] += 1
+        correct = pred_choice.eq(label.long().data).cpu().sum()
+        mean_correct.append(correct.item() / float(data.size()[0]))
+
+    class_acc[:, 2] = class_acc[:, 0] / class_acc[:, 1]
+    class_acc = np.mean(class_acc[:, 2])
+    instance_acc = np.mean(mean_correct)
+
+    return instance_acc, class_acc
+###end
 
 def normalize_point_cloud_batch(pointcloud):
     """

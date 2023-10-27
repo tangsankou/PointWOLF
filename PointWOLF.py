@@ -10,6 +10,7 @@ import numpy as np
 ###add
 from saliency import density_saliency
 import argparse
+from torch.distributions import Beta
 
 class PointWOLF(object):
     ###change
@@ -93,14 +94,25 @@ class PointWOLF(object):
         #Kernel regression
         weight = np.exp(-0.5 * (sub ** 2) / (self.sigma ** 2))  #(M,N) #kernel权重，origin权重(4,1024)
         ###1、add
-        # saliency_scores = density_saliency(pos, k=20, sigma=0.1)#显着点，新添加的#(n)
-        # saliency = np.expand_dims(saliency_scores, axis=1).repeat(M, axis=-1).transpose(1,0)#(M,N)
+        saliency_scores = density_saliency(pos, k=20, sigma=0.1)#显着点，新添加的#(n)
+        saliency = np.expand_dims(saliency_scores, axis=1).repeat(M, axis=-1).transpose(1,0)#(M,N)
         # # print("weight[0][10]:",weight[0][10])
         # # print("saliency[0][10]:",saliency[0][10])
+        ###1.1 参数为0.5
         # weight = 0.5*weight + 0.5*saliency
+        ###1.2 参数从beta分布采样
+        # 定义 Beta 分布的参数
+        alpha = 2  # Beta 分布的形状参数 alpha
+        beta = 5   # Beta 分布的形状参数 beta
+        # 创建 Beta 分布对象
+        beta_dist = Beta(alpha, beta)
+        # 采样一个参数
+        sample = beta_dist.sample()
+        weight = sample*weight + (1-sample)*self.saliency
+        ###end
         ###end
         ###2、add
-        weight = weight + self.saliency
+        # weight = weight + self.saliency
         ###end
 
     ###end
